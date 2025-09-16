@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 import shutil
 from typing import List
 from pydantic import EmailStr
-from deepface import DeepFace
+# from deepface import DeepFace
 import numpy as np
 
 
