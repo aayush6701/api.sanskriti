@@ -25,8 +25,8 @@ import numpy as np
 # Load env variables
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")  # ⚠️ change in production
+MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+SECRET_KEY = "mysanskriti@006701" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
