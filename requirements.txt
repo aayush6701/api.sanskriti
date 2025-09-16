@@ -1,0 +1,29 @@
+pip install deepface
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+
+# Security & Auth
+python-jose==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+
+# Database
+pymongo==4.6.1
+dnspython==2.6.1   # sometimes needed for MongoDB Atlas
+
+# Env vars
+python-dotenv==1.0.1
+
+# Data models & validation
+pydantic==1.10.15
+email-validator==2.1.1
+
+# Face recognition (DeepFace + dependencies)
+deepface==0.0.93
+numpy==1.26.4
+opencv-python==4.10.0.84
+tensorflow==2.17.0   # or torch if you configure DeepFace with PyTorch
+keras==2.17.0
+
+# Utils
+bson==0.5.10
