@@ -18,7 +18,7 @@ import shutil
 from typing import List
 from pydantic import EmailStr
 # from deepface import DeepFace
-import numpy as np
+# import numpy as np
 
 
 
