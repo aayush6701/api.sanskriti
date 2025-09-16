@@ -22,16 +22,24 @@ from pydantic import EmailStr
 
 
 
+
 # Load env variables
 load_dotenv()
 
-MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+# MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/sanskriti?retryWrites=true&w=majority&tls=true"
+
 SECRET_KEY = "mysanskriti@006701" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 # MongoDB client
-client = MongoClient(MONGO_URI)
+client = MongoClient(
+    MONGO_URI,
+    tls=True,
+    tlsAllowInvalidCertificates=True  # ⚠️ Remove later if possible
+)
+
 db = client["sanskriti"]
 admin_collection = db["admin"]
 users_collection = db["users"]
