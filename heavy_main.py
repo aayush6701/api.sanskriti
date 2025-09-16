@@ -19,7 +19,7 @@ from typing import List
 from pydantic import EmailStr
 # from deepface import DeepFace
 # import numpy as np
-
+import certifi
 
 
 
@@ -33,11 +33,10 @@ SECRET_KEY = "mysanskriti@006701"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
-# MongoDB client
 client = MongoClient(
     MONGO_URI,
     tls=True,
-    tlsAllowInvalidCertificates=True  # ⚠️ Remove later if possible
+    tlsCAFile=certifi.where()   # ✅ ensures proper CA certs
 )
 
 db = client["sanskriti"]
