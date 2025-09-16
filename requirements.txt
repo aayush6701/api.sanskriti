@@ -17,3 +17,5 @@ fastapi>=0.111.0
 pydantic>=2.8.0
 
 email-validator==2.1.1
+certifi==2024.8.30
+
