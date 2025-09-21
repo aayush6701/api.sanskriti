@@ -27,8 +27,8 @@ from fastapi import Query
 # Load env variables
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")  # ⚠️ change in production
+MONGO_URI = "mongodb://admin:Aayush2004@localhost:27017/sanskriti?authSource=admin"
+SECRET_KEY = "q7d1JpL4wW2tqjK9eYx0Fnm3bR6sUhG5Zc8kMv2pAt7rXoDyVf9hQnB1jS4lT0X"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
