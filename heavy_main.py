@@ -17,28 +17,23 @@ from fastapi.staticfiles import StaticFiles
 import shutil
 from typing import List
 from pydantic import EmailStr
-# from deepface import DeepFace
-# import numpy as np
-import certifi
+from fastapi import Form, File, UploadFile
+from typing import List
+from fastapi import Query
+
 
 
 
 # Load env variables
 load_dotenv()
 
-# MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-MONGO_URI = "mongodb+srv://sanskriti:sanskriti6701@cluster0.flbx6oq.mongodb.net/sanskriti?retryWrites=true&w=majority&tls=true"
-
-SECRET_KEY = "mysanskriti@006701" 
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")  # ⚠️ change in production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
-client = MongoClient(
-    MONGO_URI,
-    tls=True,
-    tlsCAFile=certifi.where()   # ✅ ensures proper CA certs
-)
-
+# MongoDB client
+client = MongoClient(MONGO_URI)
 db = client["sanskriti"]
 admin_collection = db["admin"]
 users_collection = db["users"]
@@ -46,7 +41,10 @@ events_collection = db["events"]
 products_collection = db["products"]
 orders_collection = db["orders"]
 messages_collection = db["messages"]
-face_collection = db["face"]
+embedding_collection = db["embedding"]
+gallery_collection = db["gallery"]
+
+
 
 
 
@@ -214,44 +212,6 @@ def delete_user(user_id: str, current_admin=Depends(get_current_admin)):
     return {"message": "User deleted successfully"}
 
 
-# @app.post("/auth/google")
-# async def google_auth(request: Request):
-#     data = await request.json()
-#     email = data.get("email")
-#     name = data.get("name")
-
-#     if not email:
-#         raise HTTPException(status_code=400, detail="Email missing from Google response")
-
-#     user = users_collection.find_one({"email": email})
-
-#     if not user:
-#         # new user → mark as Google signup
-#         users_collection.insert_one({
-#             "name": name,
-#             "email": email,
-#             "google": True,   # ✅ mark Google signup
-            
-#         })
-#     else:
-#         # ensure field exists if missing
-#         if "google" not in user:
-#             users_collection.update_one({"email": email}, {"$set": {"google": True}})
-
-#     token = create_access_token({"email": email})
-#     return {
-#         "access_token": token,
-#         "token_type": "bearer",
-#         "email": user["email"],
-#         "name": user.get("name"),
-#         "mobile": user.get("mobile"),
-#         "address": user.get("address"),
-#         "profilePic": user.get("profilePic"),
-#         "google": True,
-#         "event": user.get("event", False)
-#     }
-
-
 @app.post("/auth/google")
 async def google_auth(request: Request):
     data = await request.json()
@@ -379,11 +339,13 @@ def self_register(admin: AdminRegister):
     })
     return {"message": "First admin created successfully"}
 
+import json
 
 @app.put("/users/update-profile")
 async def update_profile(
     mobile: Optional[str] = Form(None),
     address: Optional[str] = Form(None),
+    embedding: Optional[str] = Form(None),   # comes as JSON string
     profilePic: Optional[UploadFile] = File(None),
     token: str = Depends(oauth2_scheme)
 ):
@@ -401,6 +363,8 @@ async def update_profile(
     if address:
         updates["address"] = address
 
+    # ✅ Save profilePic
+    # ✅ Save profilePic
     if profilePic:
         file_ext = profilePic.filename.split(".")[-1].lower()
         file_name = f"{str(user['_id'])}_{int(datetime.utcnow().timestamp())}.{file_ext}"
@@ -410,7 +374,36 @@ async def update_profile(
             shutil.copyfileobj(profilePic.file, buffer)
 
         img_url = f"/uploads/{file_name}"
-        updates["profilePic"] = img_url  # ✅ Only profilePic now
+        updates["profilePic"] = img_url
+
+        # 🚨 Enforce embedding with profilePic
+        if not embedding:
+            raise HTTPException(status_code=400, detail="Face embedding required when uploading profile picture")
+
+
+    # ✅ Save embedding (safe JSON parse + link to user_id)
+    if embedding:
+        try:
+            embedding_array = json.loads(embedding)   # safe JSON parse
+            if not isinstance(embedding_array, list):
+                raise ValueError("Embedding must be a list")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid embedding format")
+
+        updates["embedding"] = embedding_array
+
+        embedding_collection.update_one(
+            {"user_id": str(user["_id"])},
+            {
+                "$set": {
+                    "user_id": str(user["_id"]),
+                    "embedding": embedding_array,
+                    "profilePic": updates.get("profilePic")
+                }
+            },
+            upsert=True
+        )
+
 
     users_collection.update_one({"_id": user["_id"]}, {"$set": updates})
 
@@ -885,81 +878,139 @@ def list_messages(current_admin=Depends(get_current_admin)):
     return {"messages": messages}
 
 
-# @app.put("/users/update-profile")
-# async def update_profile(
-#     mobile: Optional[str] = Form(None),
-#     address: Optional[str] = Form(None),
-#     profilePic: Optional[UploadFile] = File(None),
-#     token: str = Depends(oauth2_scheme)
-# ):
-#     print("🔹 [START] update_profile called")
 
-#     # Decode token
-#     payload = decode_token(token)
-#     print("✅ Token decoded:", payload)
+@app.get("/embeddings")
+def list_embeddings():
+    docs = list(embedding_collection.find({}))
+    for d in docs:
+        d["_id"] = str(d["_id"])
+    return {"embeddings": docs}
 
-#     email = payload.get("email")
-#     user = users_collection.find_one({"email": email})
-#     if not user:
-#         print("❌ User not found:", email)
-#         raise HTTPException(status_code=404, detail="User not found")
-#     print("✅ User found:", user.get("name"), user.get("_id"))
 
-#     updates = {}
 
-#     if mobile:
-#         updates["mobile"] = mobile
-#         print("📞 Mobile update:", mobile)
-#     if address:
-#         updates["address"] = address
-#         print("📍 Address update:", address)
+@app.post("/gallery/save")
+async def save_gallery(
+    title: str = Form(...),
+    date: str = Form(...),
+    images: List[UploadFile] = File(...),
+    metadata: List[str] = Form(...),  # comes as JSON string list
+):
+    saved_images = []
+    for i, image in enumerate(images):
+        file_ext = image.filename.split(".")[-1].lower()
+        file_name = f"gallery_{datetime.utcnow().timestamp()}_{i}.{file_ext}"
+        file_path = f"uploads/{file_name}"
 
-#     if profilePic:
-#         print("📷 ProfilePic upload detected:", profilePic.filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
 
-#         file_ext = profilePic.filename.split(".")[-1].lower()
-#         file_name = f"{str(user['_id'])}_{int(datetime.utcnow().timestamp())}.{file_ext}"
-#         file_path = f"uploads/{file_name}"
+        meta = json.loads(metadata[i])  # parse per-image metadata
 
-#         with open(file_path, "wb") as buffer:
-#             shutil.copyfileobj(profilePic.file, buffer)
-#         print("✅ Image saved at:", file_path)
+        saved_images.append({
+            "filePath": f"/uploads/{file_name}",
+            "type": meta["type"],
+            "faces": meta.get("faces", []),
+        })
 
-#         # relative URL for frontend access
-#         img_url = f"/uploads/{file_name}"
-#         updates["profilePic"] = img_url  
-#         print("🌐 Image URL:", img_url)
+    gallery_doc = {
+        "title": title,
+        "date": date,
+        "images": saved_images,
+        
+    }
+    result = gallery_collection.insert_one(gallery_doc)
+    gallery_doc["_id"] = str(result.inserted_id)
 
-#         try:
-#             print("⚙️ Running DeepFace.represent...")
-#             reps = DeepFace.represent(img_path=file_path, model_name="Facenet")
-#             print("✅ DeepFace output length:", len(reps))
+    return {"message": "Gallery saved successfully", "gallery": gallery_doc}
 
-#             embedding = reps[0]["embedding"]
-#             embedding = np.array(embedding).tolist()
-#             print("✅ Embedding extracted, vector size:", len(embedding))
 
-#             # ✅ Save into face collection with image path
-#             result = face_collection.update_one(
-#                 {"user_id": str(user["_id"])},
-#                 {
-#                     "$set": {
-#                         "embedding": embedding,
-#                         "image": img_url,
-#                         "updatedAt": datetime.utcnow()
-#                     }
-#                 },
-#                 upsert=True
-#             )
-#             print("✅ Face embedding saved to DB, upsert result:", result.raw_result)
+@app.get("/gallery")
+def list_gallery(page: int = 0, limit: int = 20):
+    skip = page * limit
+    cursor = gallery_collection.find().skip(skip).limit(limit).sort("_id", -1)
 
-#         except Exception as e:
-#             print("❌ DeepFace error:", str(e))
-#             raise HTTPException(status_code=400, detail=f"Face embedding failed: {str(e)}")
+    image_urls = []
+    for g in cursor:
+        for img in g.get("images", []):
+            image_urls.append({"url": img["filePath"]})
 
-#     # update user profile
-#     print("💾 Updating user profile:", updates)
-#     users_collection.update_one({"_id": user["_id"]}, {"$set": updates})
+    return {"images": image_urls}
 
-#     print("🎉 [END] Profile update successful for:", email)
-#     return {"message": "Profile updated successfully", "updates": updates}
+
+@app.get("/users/me/embedding")
+def get_my_embedding(token: str = Depends(oauth2_scheme)):
+    payload = decode_token(token)
+    email = payload.get("email")
+    print("Decoded payload:", payload)
+    print("Email from token:", email)
+
+
+    user = users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    emb = embedding_collection.find_one({"user_id": str(user["_id"])})
+    if not emb:
+        raise HTTPException(status_code=404, detail="No embedding found for this user")
+
+    emb["_id"] = str(emb["_id"])
+    return {"embedding": emb["embedding"], "profilePic": emb.get("profilePic")}
+
+
+@app.get("/gallery/with-faces")
+def list_gallery_with_faces(page: int = 0, limit: int = 50):
+    """
+    Returns gallery images including face embeddings for AI search.
+    Use this ONLY for face recognition, not normal gallery browsing.
+    """
+    skip = page * limit
+    cursor = gallery_collection.find().skip(skip).limit(limit).sort("_id", -1)
+
+    images_with_faces = []
+    for g in cursor:
+        for img in g.get("images", []):
+            images_with_faces.append({
+                "url": img["filePath"],
+                "type": img.get("type"),
+                "faces": img.get("faces", []),  # ✅ descriptors included
+            })
+
+    return {"images": images_with_faces}
+
+
+
+@app.post("/gallery/filter")
+def filter_gallery(
+    titles: Optional[List[str]] = Body(default=[]),
+    dateFrom: Optional[str] = Body(default=None),
+    dateTo: Optional[str] = Body(default=None),
+):
+    query = {}
+
+    if titles:
+        query["title"] = {"$in": titles}
+
+    if dateFrom and dateTo:
+        query["date"] = {"$gte": dateFrom, "$lte": dateTo}
+    elif dateFrom:
+        query["date"] = {"$gte": dateFrom}
+    elif dateTo:
+        query["date"] = {"$lte": dateTo}
+
+    results = gallery_collection.find(query).sort("date", -1)
+
+    image_urls = []
+    for g in results:
+        for img in g.get("images", []):
+            image_urls.append({
+                "url": img["filePath"],
+                "title": g.get("title"),
+                "date": g.get("date"),
+            })
+
+    return {"images": image_urls}
+
+@app.get("/gallery/titles")
+def list_gallery_titles():
+    titles = gallery_collection.distinct("title")  # MongoDB distinct query
+    return {"titles": titles}
