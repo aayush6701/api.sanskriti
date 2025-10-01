@@ -924,6 +924,51 @@ def list_embeddings():
 #     return {"message": "Gallery saved successfully", "gallery": gallery_doc}
 
 
+# @app.post("/gallery/save")
+# async def save_gallery(
+#     title: str = Form(...),
+#     date: str = Form(...),
+#     images: List[UploadFile] = File(...),
+#     metadata: List[str] = Form(...),  # comes as JSON string list
+# ):
+#     saved_images = []
+#     for i, image in enumerate(images):
+#         file_ext = image.filename.split(".")[-1].lower()
+#         file_name = f"gallery_{datetime.utcnow().timestamp()}_{i}.{file_ext}"
+#         file_path = f"uploads/{file_name}"
+
+#         with open(file_path, "wb") as buffer:
+#             shutil.copyfileobj(image.file, buffer)
+
+#         meta = json.loads(metadata[i])
+
+#         saved_images.append({
+#             "filePath": f"/uploads/{file_name}",
+#             "type": meta["type"],
+#             "faces": meta.get("faces", []),
+#         })
+
+#     # 🔍 Check if album already exists (title + date are unique pair)
+#     existing_album = gallery_collection.find_one({"title": title, "date": date})
+
+#     if existing_album:
+#         # ✅ Append images to existing album
+#         gallery_collection.update_one(
+#             {"_id": existing_album["_id"]},
+#             {"$push": {"images": {"$each": saved_images}}}
+#         )
+#         return {"message": "Images appended to existing album", "albumId": str(existing_album["_id"])}
+#     else:
+#         # 🆕 Create new album
+#         gallery_doc = {
+#             "title": title,
+#             "date": date,
+#             "images": saved_images,
+#         }
+#         result = gallery_collection.insert_one(gallery_doc)
+#         gallery_doc["_id"] = str(result.inserted_id)
+#         return {"message": "New album created", "gallery": gallery_doc}
+
 @app.post("/gallery/save")
 async def save_gallery(
     title: str = Form(...),
@@ -932,34 +977,51 @@ async def save_gallery(
     metadata: List[str] = Form(...),  # comes as JSON string list
 ):
     saved_images = []
+    failed_files = []
+
     for i, image in enumerate(images):
-        file_ext = image.filename.split(".")[-1].lower()
-        file_name = f"gallery_{datetime.utcnow().timestamp()}_{i}.{file_ext}"
-        file_path = f"uploads/{file_name}"
+        try:
+            file_ext = image.filename.split(".")[-1].lower()
+            file_name = f"gallery_{datetime.utcnow().timestamp()}_{i}.{file_ext}"
+            file_path = f"uploads/{file_name}"
 
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(image.file, buffer)
 
-        meta = json.loads(metadata[i])
+            meta = json.loads(metadata[i])
 
-        saved_images.append({
-            "filePath": f"/uploads/{file_name}",
-            "type": meta["type"],
-            "faces": meta.get("faces", []),
-        })
+            saved_images.append({
+                "filePath": f"/uploads/{file_name}",
+                "type": meta["type"],
+                "faces": meta.get("faces", []),
+            })
+        except Exception as e:
+            print(f"❌ Failed to save image {image.filename}: {e}")
+            failed_files.append(image.filename)
 
-    # 🔍 Check if album already exists (title + date are unique pair)
+    if not saved_images and failed_files:
+        # nothing was saved
+        return {
+            "message": "All images failed",
+            "savedCount": 0,
+            "failedFiles": failed_files,
+        }
+
+    # 🔍 Check if album already exists (title + date unique)
     existing_album = gallery_collection.find_one({"title": title, "date": date})
 
     if existing_album:
-        # ✅ Append images to existing album
         gallery_collection.update_one(
             {"_id": existing_album["_id"]},
             {"$push": {"images": {"$each": saved_images}}}
         )
-        return {"message": "Images appended to existing album", "albumId": str(existing_album["_id"])}
+        return {
+            "message": "Images appended to existing album",
+            "albumId": str(existing_album["_id"]),
+            "savedCount": len(saved_images),
+            "failedFiles": failed_files,
+        }
     else:
-        # 🆕 Create new album
         gallery_doc = {
             "title": title,
             "date": date,
@@ -967,8 +1029,12 @@ async def save_gallery(
         }
         result = gallery_collection.insert_one(gallery_doc)
         gallery_doc["_id"] = str(result.inserted_id)
-        return {"message": "New album created", "gallery": gallery_doc}
-
+        return {
+            "message": "New album created",
+            "gallery": gallery_doc,
+            "savedCount": len(saved_images),
+            "failedFiles": failed_files,
+        }
 
 
 
